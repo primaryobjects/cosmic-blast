@@ -176,7 +176,7 @@
         }
 
         // Create a red overlay for the screen flash
-        const overlayGeometry = new THREE.PlaneGeometry(2, 2);
+        const overlayGeometry = new THREE.PlaneGeometry(4, 4);
         const overlayMaterial = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true});
         const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial);
         overlay.material.opacity = 0;
@@ -552,31 +552,19 @@
         const upArrow = document.getElementById('up-arrow');
         const downArrow = document.getElementById('down-arrow');
 
-        leftArrow.addEventListener('touchstart', () => {
-            shootLaser('left');
-        });
-        leftArrow.addEventListener('mousedown', () => {
+        leftArrow.addEventListener('click', () => {
             shootLaser('left');
         });
 
-        rightArrow.addEventListener('touchstart', () => {
-            shootLaser('right');
-        });
-        rightArrow.addEventListener('mousedown', () => {
+        rightArrow.addEventListener('click', () => {
             shootLaser('right');
         });
 
-        upArrow.addEventListener('touchstart', () => {
-            shootLaser('up');
-        });
-        upArrow.addEventListener('mousedown', () => {
+        upArrow.addEventListener('click', () => {
             shootLaser('up');
         });
 
-        downArrow.addEventListener('touchstart', () => {
-            shootLaser('down');
-        });
-        downArrow.addEventListener('mousedown', () => {
+        downArrow.addEventListener('click', () => {
             shootLaser('down');
         });
     </script>
