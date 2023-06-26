@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cosmic Blast</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="controls">
+        <button id="up-arrow">Up</button>
+        <br>
+        <button id="left-arrow">Left</button>
+        <button id="right-arrow">Right</button>
+        <br>
+        <button id="down-arrow">Down</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game speed.
+        let speed = 0.01;
+
+        // Set up the scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1);
+        camera.position.set(0, 2, 1);
+        camera.lookAt(scene.position);
+        const renderer = new THREE.WebGLRenderer({canvas: document.querySelector('#gameCanvas')});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Create an AudioContext
+        const audioContext = new AudioContext();
+
+        // Load the laser sound
+        let laserSoundBuffer;
+        fetch('sounds/laser.mp3')
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+            .then(audioBuffer => {
+                laserSoundBuffer = audioBuffer;
+            });
+
+        // Load the explode sound
+        let explodeSoundBuffer;
+        fetch('sounds/explode.mp3')
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+            .then(audioBuffer => {
+                explodeSoundBuffer = audioBuffer;
+            });
+
+        // Load the hit sound
+        let hitSoundBuffer;
+        fetch('sounds/hit.mp3')
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+            .then(audioBuffer => {
+                hitSoundBuffer = audioBuffer;
+            });
+
+        function playLaserSound() {
+            const laserSoundSource = audioContext.createBufferSource();
+            laserSoundSource.buffer = laserSoundBuffer;
+            laserSoundSource.connect(audioContext.destination);
+            laserSoundSource.start();
+        }
+        function playExplodeSound() {
+            const explodeSoundSource = audioContext.createBufferSource();
+            explodeSoundSource.buffer = explodeSoundBuffer;
+            explodeSoundSource.connect(audioContext.destination);
+            explodeSoundSource.start();
+        }
+        function playHitSound() {
+            const hitSoundSource = audioContext.createBufferSource();
+            hitSoundSource.buffer = hitSoundBuffer;
+            hitSoundSource.connect(audioContext.destination);
+            hitSoundSource.start();
+        }
+
+        // Initialize texture loader.
+        const textureLoader = new THREE.TextureLoader();
+
+        // Create the background
+        const backgroundGeometry = new THREE.PlaneGeometry(2, 2);
+        const backgroundTexture = new THREE.TextureLoader().load(`images/background.png`);
+        const backgroundMaterial = new THREE.MeshBasicMaterial({map: backgroundTexture});
+        const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+        background.scale.set(1, 2.5, 0);
+        scene.add(background);
+
+        // Create the ship
+        const shipGeometry = new THREE.PlaneGeometry(0.5, 0.5);
+        const shipTexture = textureLoader.load('images/spaceship3.png');
+        const shipMaterial = new THREE.MeshBasicMaterial({map: shipTexture});
+        shipMaterial.transparent = true;
+        const ship = new THREE.Mesh(shipGeometry, shipMaterial);
+        scene.add(ship);
+
+        // Create the meteor
+        const meteorGeometry = new THREE.SphereGeometry(0.1, 0.1);
+        let meteorTextureIndex = Math.floor(Math.random() * 4) + 1;
+        let meteorTexture = textureLoader.load(`images/meteor${meteorTextureIndex}.png`);
+        let meteorMaterial = new THREE.MeshPhongMaterial({map: meteorTexture});
+        //let meteorMaterial = new THREE.MeshBasicMaterial({map: meteorTexture});
+        let meteor = new THREE.Mesh(meteorGeometry, meteorMaterial);
+        scene.add(meteor);
+
+        // Create a particle system
+        const particleCount = 10;
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const pMaterial = new THREE.PointsMaterial({
+            color: 0xFF0000,
+            size: 8,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+
+        // Create individual particles
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            positions[i3] = Math.random() * 0.2 - 0.1;
+            positions[i3 + 1] = Math.random() * 0.2 - 0.1;
+            positions[i3 + 2] = Math.random() * 0.2 - 0.1;
+        }
+
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        // Create the particle system
+        const particleSystem = new THREE.Points(particles, pMaterial);
+        particleSystem.sortParticles = true;
+        particleSystem.visible = false;
+
+        // Add the particle system to the scene
+        scene.add(particleSystem);
+
+        // Update the position of the particle system to follow the meteor
+        particleSystem.position.copy(ship.position);
+
+        // Create an array to store the velocity of each particle
+        const velocities = new Float32Array(particleCount * 3);
+
+        // Set the initial velocity of each particle
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            velocities[i3] = Math.random() * 0.1 - 0.05;
+            velocities[i3 + 1] = Math.random() * 0.1 - 0.05;
+            velocities[i3 + 2] = Math.random() * 0.1 - 0.05;
+        }
+
+        // Create a point light
+        const light = new THREE.PointLight(0xffff00, 2, 500);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+
+        const sides = ['left', 'right', 'top', 'bottom'];
+        const side = sides[Math.floor(Math.random() * sides.length)];
+        switch (side) {
+            case 'left':
+                meteor.position.x = ship.position.x - 1;
+                meteor.position.y = ship.position.y;
+                break;
+            case 'right':
+                meteor.position.x = ship.position.x + 1;
+                meteor.position.y = ship.position.y;
+                break;
+            case 'top':
+                meteor.position.x = ship.position.x;
+                meteor.position.y = ship.position.y + 2;
+                break;
+            case 'bottom':
+                meteor.position.x = ship.position.x;
+                meteor.position.y = ship.position.y - 2;
+                break;
+        }
+
+        // Create a red overlay for the screen flash
+        const overlayGeometry = new THREE.PlaneGeometry(2, 2);
+        const overlayMaterial = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true});
+        const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial);
+        overlay.material.opacity = 0;
+        scene.add(overlay);
+
+        // Create the score text
+        let score, gameOver, levelText;
+        let level = 1;
+        let lives = 3;
+        let font;
+        const scoreFont = new THREE.FontLoader().load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/fonts/helvetiker_regular.typeface.json', fnt => {
+            font = fnt;
+            const scoreGeometry = new THREE.TextGeometry('Score: 0', {
+                font: font,
+                size: 0.1,
+                height: 0.01
+            });
+            const scoreMaterial = new THREE.MeshBasicMaterial({color: 0xffffff});
+            score = new THREE.Mesh(scoreGeometry, scoreMaterial);
+            score.position.x = -0.9;
+            score.position.y = 0.9;
+            score.userData.score = 0;
+            scene.add(score);
+
+            // Create the game over text
+            const gameOverGeometry = new THREE.TextGeometry('Game Over', {
+                font: font,
+                size: 0.1,
+                height: 0.01
+            });
+            const gameOverMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
+            gameOver = new THREE.Mesh(gameOverGeometry, gameOverMaterial);
+            gameOver.visible = false;
+            gameOver.position.x -= 0.3;
+            gameOver.position.y += 0.35
+            scene.add(gameOver);
+
+            // Create the level text
+            const levelGeometry = new THREE.TextGeometry(`Level: ${level}`, {
+                font: font,
+                size: 0.1,
+                height: 0.01
+            });
+            const levelMaterial = new THREE.MeshBasicMaterial({color: 0xffffff});
+            levelText = new THREE.Mesh(levelGeometry, levelMaterial);
+            levelText.position.x = 0.4;
+            levelText.position.y = 0.9;
+            scene.add(levelText);
+        });
+
+        // Create the explosion
+        const explosionGeometry = new THREE.SphereGeometry(0.1);
+        const explosionMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
+        explosionMaterial.transparent = true;
+        explosionMaterial.opacity = 0.5;
+        const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+        explosion.visible = false;
+        scene.add(explosion);
+
+        // Create the laser
+        const laserGeometry = new THREE.BoxGeometry(1, 0.01, 0.01);
+        const laserMaterial = new THREE.MeshBasicMaterial({color: 0xffffff});
+        const laser = new THREE.Mesh(laserGeometry, laserMaterial);
+        laser.visible = false;
+        scene.add(laser);
+
+        // Shoot the laser when an arrow key is pressed
+        document.addEventListener('keydown', event => {
+            if (event.key === 'ArrowUp') {
+                shootLaser('up');
+            } else if (event.key === 'ArrowRight') {
+                shootLaser('right');
+            } else if (event.key === 'ArrowDown') {
+                shootLaser('down');
+            } else if (event.key === 'ArrowLeft') {
+                shootLaser('left');
+            }
+            event.preventDefault();
+        });
+
+        function shootLaser(direction) {
+            if (lives > 0) {
+                playLaserSound();
+
+                // Set the initial position and rotation of the laser
+                laser.position.copy(ship.position);
+                switch (direction) {
+                    case 'up':
+                        laser.position.y += 0.7;
+                        laser.rotation.z = Math.PI / 2;
+                        break;
+                    case 'right':
+                        laser.position.x += 0.7;
+                        laser.rotation.z = 0;
+                        break;
+                    case 'down':
+                        laser.position.y -= 0.7;
+                        laser.rotation.z = -Math.PI / 2;
+                        break;
+                    case 'left':
+                        laser.position.x -= 0.7;
+                        laser.rotation.z = Math.PI;
+                        break;
+                }
+
+                // Show the laser
+                laser.visible = true;
+
+                // Move the laser
+                const speed = 0.1;
+                const moveLaser = setInterval(() => {
+                    switch (direction) {
+                        case 'up':
+                            laser.position.y += speed;
+                            break;
+                        case 'right':
+                            laser.position.x += speed;
+                            break;
+                        case 'down':
+                            laser.position.y -= speed;
+                            break;
+                        case 'left':
+                            laser.position.x -= speed;
+                            break;
+                    }
+
+                    // Stop moving the laser if it goes off screen
+                    if (laser.position.x < -1 || laser.position.x > 1 || laser.position.y < -2 || laser.position.y > 2) {
+                        clearInterval(moveLaser);
+                        laser.visible = false;
+                    }
+                }, 16);
+
+                // Fade out the laser
+                const fadeOut = setInterval(() => {
+                    laser.material.opacity -= 0.1;
+                    if (laser.material.opacity <= 0) {
+                        clearInterval(fadeOut);
+                        clearInterval(moveLaser);
+                        laser.visible = false;
+                        laser.material.opacity = 1;
+                    }
+                }, 100);
+            }
+        }
+
+        // Check for collision between the meteor and the ship
+        function checkCollisionMeteorShip() {
+            const distance = meteor.position.distanceTo(ship.position);
+            if (distance < 0.3) {
+                // Decrement the lives.
+                lives -= 1;
+
+                // End the game if the player has no more lives
+                if (lives <= 0) {
+                    gameOver.visible = true;
+                    particleSystem.visible = false;
+                    speed = 0.03;
+                }
+                else if (lives < 2) {
+                    particleSystem.visible = true;
+                }
+
+                // Flash the screen red
+                overlay.material.opacity = lives > 0 ? 1 : 0;
+
+                // Fade out the red overlay
+                const fadeOut = setInterval(() => {
+                    overlay.material.opacity -= 0.1;
+                    if (overlay.material.opacity <= 0) {
+                        clearInterval(fadeOut);
+                    }
+                }, 100);
+
+                lives > -1 && playExplodeSound();
+
+                // Generate a new meteor from a random direction
+                meteorTextureIndex = Math.floor(Math.random() * 4) + 1;
+                meteorTexture = textureLoader.load(`images/meteor${meteorTextureIndex}.png`);
+                meteorMaterial.map = meteorTexture;
+                light.color.setHex(Math.random() * 0xffffff);
+                const side = sides[Math.floor(Math.random() * sides.length)];
+                switch (side) {
+                    case 'left':
+                        meteor.position.x = ship.position.x - 1;
+                        meteor.position.y = ship.position.y;
+                        break;
+                    case 'right':
+                        meteor.position.x = ship.position.x + 1;
+                        meteor.position.y = ship.position.y;
+                        break;
+                    case 'top':
+                        meteor.position.x = ship.position.x;
+                        meteor.position.y = ship.position.y + 2;
+                        break;
+                    case 'bottom':
+                        meteor.position.x = ship.position.x;
+                        meteor.position.y = ship.position.y - 2;
+                        break;
+                }
+            }
+        }
+
+        // Check for collision between the laser and the meteor
+        function checkCollisionLaserMeteor() {
+            const distance = laser.position.distanceTo(meteor.position);
+            if (!explosion.visible && distance < 0.3) {
+                // Show the explosion
+                explosion.position.copy(meteor.position);
+                explosion.visible = true;
+
+                playHitSound();
+
+                // Hide the laser and meteor
+                laser.visible = false;
+                meteor.visible = false;
+
+                // Set the initial velocity of the explosion
+                explosion.userData.velocity = new THREE.Vector3().copy(meteor.userData.velocity);
+
+                // Increment the score
+                score.userData.score += 100;
+                score.geometry = new THREE.TextGeometry(`Score: ${score.userData.score}`, {
+                    font: font,
+                    size: 0.1,
+                    height: 0.01
+                });
+
+                // Change the color of the score text to a random color.
+                score.material.color.setHex(Math.random() * 0xffffff);
+
+                // Increase the level every 1000 points
+                if (score.userData.score % 1000 === 0) {
+                    level += 1;
+                    levelText.geometry = new THREE.TextGeometry(`Level: ${level}`, {
+                        font: font,
+                        size: 0.1,
+                        height: 0.01
+                    });
+
+                    // Change the color of the level text to a random color
+                    levelText.material.color.setHex(Math.random() * 0xffffff);
+                }
+
+                // Increase the speed of the meteors every 1000 points.
+                if (score.userData.score % 1000 === 0) {
+                    speed += 0.01;
+                }
+
+                // Fade out the explosion
+                const fadeOut = setInterval(() => {
+                    explosion.material.opacity -= 0.2;
+                    if (explosion.material.opacity <= 0) {
+                        clearInterval(fadeOut);
+                        explosion.visible = false;
+                        explosion.material.opacity = 1;
+
+                        // Generate a new meteor from a random direction
+                        meteorTextureIndex = Math.floor(Math.random() * 4) + 1;
+                        meteorTexture = textureLoader.load(`images/meteor${meteorTextureIndex}.png`);
+                        meteorMaterial.map = meteorTexture;
+                        light.color.setHex(Math.random() * 0xffffff);
+                        const side = sides[Math.floor(Math.random() * sides.length)];
+                        switch (side) {
+                            case 'left':
+                                meteor.position.x = ship.position.x - 1;
+                                meteor.position.y = ship.position.y;
+                                break;
+                            case 'right':
+                                meteor.position.x = ship.position.x + 1;
+                                meteor.position.y = ship.position.y;
+                                break;
+                            case 'top':
+                                meteor.position.x = ship.position.x;
+                                meteor.position.y = ship.position.y + 2;
+                                break;
+                            case 'bottom':
+                                meteor.position.x = ship.position.x;
+                                meteor.position.y = ship.position.y - 2;
+                                break;
+                        }
+                        meteor.visible = true;
+                    }
+                }, 75);
+            }
+        }
+
+        // Set the initial rotation speed of the meteor
+        meteor.userData.rotationSpeed = new THREE.Vector3(
+            Math.random() * 0.1 - 0.05,
+            Math.random() * 0.1 - 0.05,
+            Math.random() * 0.1 - 0.05
+        );
+
+        function updateParticles() {
+            // Update particles in animation loop
+            const positions = particles.getAttribute('position').array;
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+
+                // Move particles based on their velocity
+                positions[i3] += velocities[i3];
+                positions[i3 + 1] += velocities[i3 + 1];
+                positions[i3 + 2] += velocities[i3 + 2];
+
+                // Reset particles that have faded out completely
+                if (pMaterial.opacity <= 0 ||
+                        (positions[i3] < -1 || positions[i3] > 1 || positions[i3 + 1] < -1 || positions[i3 + 1] > 1) ||
+                        (positions[i3] < ship.position.x - 0.2 || positions[i3] > ship.position.x + 0.2 || positions[i3 + 1] < ship.position.y - 0.2 || positions[i3 + 1] > ship.position.y + 0.2)
+                    ) {
+                    positions[i3] = ship.position.x;
+                    positions[i3 + 1] = ship.position.y;
+                    positions[i3 + 2] = ship.position.z;
+
+                    pMaterial.opacity = 1;
+
+                    velocities[i3] = Math.random() * 0.1 - 0.05;
+                    velocities[i3 + 1] = Math.random() * 0.1 - 0.05;
+                    velocities[i3 + 2] = Math.random() * 0.1 - 0.05;
+                }
+            }
+
+            // Update the geometry of the particle system
+            particles.getAttribute('position').needsUpdate = true;
+
+            // Fade out particles
+            pMaterial.opacity -= 0.5;
+        }
+
+        setInterval(function() {
+            updateParticles();
+        }, 15);
+
+        // Render the scene
+        function animate() {
+            requestAnimationFrame(animate);
+
+            meteor.position.x += speed * (ship.position.x - meteor.position.x);
+            meteor.position.y += speed * (ship.position.y - meteor.position.y);
+
+            // Rotate the meteor
+            meteor.rotation.x += meteor.userData.rotationSpeed.x;
+            meteor.rotation.y += meteor.userData.rotationSpeed.y;
+            meteor.rotation.z += meteor.userData.rotationSpeed.z;
+
+            meteor.userData.velocity = new THREE.Vector3(speed * (ship.position.x - meteor.position.x), speed * (ship.position.y - meteor.position.y), 0);
+
+            // Move the explosion
+            if (explosion.visible) {
+                explosion.position.add(explosion.userData.velocity);
+                explosion.userData.velocity.multiplyScalar(0.96);
+            }
+
+            !explosion.visible && checkCollisionMeteorShip();
+            laser.visible && checkCollisionLaserMeteor();
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        const leftArrow = document.getElementById('left-arrow');
+        const rightArrow = document.getElementById('right-arrow');
+        const upArrow = document.getElementById('up-arrow');
+        const downArrow = document.getElementById('down-arrow');
+
+        leftArrow.addEventListener('touchstart', () => {
+            shootLaser('left');
+        });
+        leftArrow.addEventListener('mousedown', () => {
+            shootLaser('left');
+        });
+
+        rightArrow.addEventListener('touchstart', () => {
+            shootLaser('right');
+        });
+        rightArrow.addEventListener('mousedown', () => {
+            shootLaser('right');
+        });
+
+        upArrow.addEventListener('touchstart', () => {
+            shootLaser('up');
+        });
+        upArrow.addEventListener('mousedown', () => {
+            shootLaser('up');
+        });
+
+        downArrow.addEventListener('touchstart', () => {
+            shootLaser('down');
+        });
+        downArrow.addEventListener('mousedown', () => {
+            shootLaser('down');
+        });
+    </script>
+</body>
+</html>
