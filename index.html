@@ -16,6 +16,7 @@
     <canvas id="gameCanvas"></canvas>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/controls/OrbitControls.js"></script>
     <script>
         // Game speed.
         let speed = 0.01;
@@ -509,6 +510,14 @@
             updateParticles();
         }, 15);
 
+        // Set up the OrbitControls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enablePan = false;
+        controls.enableZoom = false;
+        // Enable damping (inertia) for smoother controls
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
         // Render the scene
         function animate() {
             requestAnimationFrame(animate);
@@ -531,6 +540,8 @@
 
             !explosion.visible && checkCollisionMeteorShip();
             laser.visible && checkCollisionLaserMeteor();
+
+            controls.update();
 
             renderer.render(scene, camera);
         }
